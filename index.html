@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Turning a 1080p Screen Recording Into a Usable 4K Asset</title>
-<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: how much ink is lost upscaling text at 2x, 3x and 4x.">
+<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: ink lost upscaling at 2x, 3x and 4x — and a second, larger loss from 4:2:0 chroma subsampling that luma metrics cannot see.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-screen-recording-4k/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Turning a 1080p Screen Recording Into a Usable 4K Asset">
@@ -43,8 +43,10 @@ footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-
 <h1>Turning a 1080p Screen Recording Into a Usable 4K Asset</h1>
 <p class="lede">Screen recordings are the one case where 4K is genuinely the right target,
 because UI text is the highest-frequency content video can carry. But text also fails
-differently — measured: 4× upscaling loses 12% of the ink pixels.</p>
-<p class="meta">14 November 2026 · stroke-contrast and ink-coverage measurement on rendered text</p>
+differently — measured: 4× upscaling loses 12% of the ink pixels, and a default 4:2:0
+export silently destroys up to 46% of the colour in small text without moving the ink
+count at all.</p>
+<p class="meta">14 November 2026 · ink-coverage measurement on rendered text, plus chroma-retention measurement across 4:2:0 / 4:2:2 / 4:4:4 encodes</p>
 
 <p>Everything in the previous article about 4K being a bit-budget trap has an exception, and
 this is it. A screen recording is not a photograph. It is a rendering of vector content at a
@@ -132,6 +134,131 @@ fraction of the frame.</p>
 because the arithmetic changed but because the content's entropy is concentrated in a
 small area. This is the one content class where a 4K export at a modest bitrate is a
 reasonable trade.</p>
+
+<h2>The second loss channel nobody measures: chroma subsampling</h2>
+
+<p>Everything above measured ink at a mid-grey threshold, which is a luma measurement. That is
+the metric every sharpness article uses, and it is the metric most people check when they look
+at an exported frame. It is also incomplete, because the moment your recording leaves the
+capture app it goes through a colour transform — RGB to YCbCr — and an export preset that
+almost certainly throws away chroma resolution before a single pixel is scaled.</p>
+
+<p>H.264 at 4:2:0 stores one chroma sample for every 2×2 block of luma samples. That is a 50%
+cut in horizontal chroma detail and a 50% cut vertically, applied unconditionally, before rate
+control even gets a say. For a photograph this is invisible: human vision resolves colour far
+more coarsely than brightness, which is the entire reason the format exists. For coloured UI
+text it is not invisible, because the thing you are trying to preserve <em>is</em> a two-pixel
+wide coloured stroke.</p>
+
+<p>I rendered a 1920×1080 test plate with four sizes of text (24, 16, 13, 11 px) in four
+colours, on both a white and a dark background, encoded each through libx264 and decoded a
+frame back, then measured mean chroma magnitude inside the glyph ink mask.</p>
+
+<table>
+<thead><tr><th>Text size</th><th class="num">4:2:0 crf18</th><th class="num">4:2:2 crf18</th>
+<th class="num">4:4:4 crf18</th><th class="num">4:2:0 crf28</th></tr></thead>
+<tbody>
+<tr><td>24 px</td><td class="num">84.0%</td><td class="num">91.1%</td>
+<td class="num">94.6%</td><td class="num">71.5%</td></tr>
+<tr><td>16 px</td><td class="num">66.0%</td><td class="num">81.4%</td>
+<td class="num">87.1%</td><td class="num">48.6%</td></tr>
+<tr><td>13 px</td><td class="num">60.2%</td><td class="num">76.3%</td>
+<td class="num">85.8%</td><td class="num">42.4%</td></tr>
+<tr><td>11 px</td><td class="num">54.1%</td><td class="num">73.1%</td>
+<td class="num">85.3%</td><td class="num">38.7%</td></tr>
+</tbody>
+</table>
+
+<p>Chroma retained, as a percentage of the ground truth's chroma magnitude inside the ink
+mask. Coloured text only (25 groups above the measurement's noise floor — achromatic rows sit
+at a chroma magnitude near zero, where any ratio is meaningless, so they are excluded rather
+than reported as a spectacular 215% gain).</p>
+
+<div class="callout">
+<p><strong>The result that makes this worth writing down:</strong> luma ink coverage after the
+round trip was <strong>100.7% on average</strong> under 4:2:0 (range 98.6–104.4%) and 100.2%
+under 4:4:4. Your existing ink-coverage check, the one in the table further up this page,
+reports the export as essentially perfect — while 46% of the colour in 11 px text is gone.</p>
+</div>
+
+<p>That is the whole trap. The metric that is easy to run says the file is fine. The damage is
+entirely in the channel that metric does not look at. Glyph edges survive as luminance steps —
+the letters remain legible, the document still reads — but saturated UI colours desaturate
+toward grey, and any colour used to carry meaning (a red error label, an amber warning, a green
+"paid" badge) loses the property that made it distinguishable in the first place. In the worst
+single case, dark green at 11 px, 4:2:0 kept 48.6% of the original chroma while 4:4:4 kept
+72.3%.</p>
+
+<p>Two details rule out the obvious explanations.</p>
+
+<p><strong>It is not rate control.</strong> Stepping 4:2:0 from crf18 to crf28 halved the file
+(44,022 → 22,243 bytes) and dropped 11 px chroma from 54.1% to 38.7%. So bitrate matters — but
+even the generous crf18 encode, at 8.80 Mbit/s, cannot climb above the ceiling that the
+subsampling sets. The ceiling is structural, not budgetary.</p>
+
+<p><strong>It is not bleeding, mostly.</strong> Mean chroma appearing in the background pixels
+inside the text bounding box — pixels where ground truth has none — rose from 5.10 under 4:4:4
+to 6.42 under 4:2:0 at 11 px. Real, measurable, and an order of magnitude too small to explain
+a 31-point drop in retained chroma. The colour is not smeared outward so much as averaged away
+in place.</p>
+
+<h2>What this costs, and what to change</h2>
+
+<p>This is the part that should end the debate. I re-encoded the same plate at 4:4:4:</p>
+
+<table>
+<thead><tr><th>Encode</th><th class="num">Bytes</th><th class="num">Bitrate</th>
+<th class="num">Chroma @11px</th><th class="num">vs 4:2:0</th></tr></thead>
+<tbody>
+<tr><td>4:2:0 crf18</td><td class="num">44,022</td><td class="num">8.80 Mb/s</td>
+<td class="num">54.1%</td><td class="num">—</td></tr>
+<tr><td>4:4:4 crf18</td><td class="num">47,508</td><td class="num">9.50 Mb/s</td>
+<td class="num">85.3%</td><td class="num">+7.9%</td></tr>
+<tr><td>4:2:2 crf18</td><td class="num">51,191</td><td class="num">10.24 Mb/s</td>
+<td class="num">73.1%</td><td class="num">+16.3%</td></tr>
+</tbody>
+</table>
+
+<p>A 7.9% larger file buys 31 percentage points of retained colour in the smallest text. This
+is a far better exchange rate than anything in the upscaling chain, where doubling compute
+typically buys single-digit gains. And note 4:2:2 is <em>worse</em> than 4:4:4 on both size and
+chroma — it is a compromise format for camera capture, not something to pick for a screen
+recording you control end to end.</p>
+
+<ol>
+  <li><strong>Export screen recordings at 4:4:4.</strong> The cost is under 8% on this content
+  and it removes the loss channel entirely rather than reducing it. If your tool offers
+  "high profile with 4:4:4" or a "lossless-ish" toggle, that is the one to take.</li>
+  <li><strong>Do not fix it by raising bitrate within 4:2:0.</strong> The measurements cap out
+  around 54% retention at 11 px no matter how generous the rate control gets.</li>
+  <li><strong>Do not trust a luma-based check on its own.</strong> Ink coverage said 100.7%
+  while nearly half the colour was gone. If you only have one metric, measure chroma magnitude
+  inside the glyph mask, not pixel count.</li>
+  <li><strong>Be careful with colour-as-meaning.</strong> If red-versus-amber is the semantic
+  content of your UI, 4:2:0 at small sizes makes those two states converge. Legibility survives
+  the damage; distinguishability does not.</li>
+</ol>
+
+<p>One honest limit on all of this: 4:4:4 is <em>better</em>, not free of loss. Even at 11 px
+it retained 85.3%, not 100%, because the lossy quantisation stage still runs. The only setting
+that retains everything is a lossless codec, which is why capture at the final resolution
+remains the highest-value move on this page. Subsampling control is what you reach for when you
+cannot re-record.</p>
+
+<h2>Reproducing the chroma measurement</h2>
+
+<pre><code>ffmpeg -y -i gt.png -c:v libx264 -preset slow -pix_fmt yuv444p -crf 18 out.mp4
+ffmpeg -y -i out.mp4 -frames:v 1 back.png
+
+y, cb, cr = rgb_to_ycbcr(np.asarray(Image.open("back.png").convert("RGB"), float))
+chroma = np.hypot(cb - 128, cr - 128)          # saturation magnitude
+# sample inside the glyph ink mask taken from the ground truth, not the decoded frame
+print(chroma[ink_mask].mean() / gt_chroma[ink_mask].mean() * 100)
+</code></pre>
+
+<p>Sample the mask from ground truth, always. Deriving the mask from the decoded frame lets the
+codec define its own score — a frame with the colour averaged away produces a smaller ink mask
+and therefore grades itself higher.</p>
 
 <h2>Reproducing it</h2>
 
