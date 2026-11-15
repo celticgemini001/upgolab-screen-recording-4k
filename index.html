@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Turning a 1080p Screen Recording Into a Usable 4K Asset</title>
-<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: ink lost upscaling at 2x, 3x and 4x — and a second, larger loss from 4:2:0 chroma subsampling that luma metrics cannot see.">
+<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: ink coverage and stroke solidity diverge — a 720p→4K upscale reads as +3.4% ink while keeping 60% of native stroke darkness, and 4:2:0 destroys 46% of colour in small text invisibly to luma metrics.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-screen-recording-4k/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Turning a 1080p Screen Recording Into a Usable 4K Asset">
@@ -43,10 +43,10 @@ footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-
 <h1>Turning a 1080p Screen Recording Into a Usable 4K Asset</h1>
 <p class="lede">Screen recordings are the one case where 4K is genuinely the right target,
 because UI text is the highest-frequency content video can carry. But text also fails
-differently — measured: 4× upscaling loses 12% of the ink pixels, and a default 4:2:0
-export silently destroys up to 46% of the colour in small text without moving the ink
-count at all.</p>
-<p class="meta">14 November 2026 · ink-coverage measurement on rendered text, plus chroma-retention measurement across 4:2:0 / 4:2:2 / 4:4:4 encodes</p>
+differently — 4× upscaling drops ink coverage 12%, a default 4:2:0 export silently destroys
+up to 46% of the colour in small text, and the coverage metric most people grade with reports
+a 720p→4K upscale as <em>better</em> than native while keeping only 60% of the stroke darkness.</p>
+<p class="meta">15 November 2026 · ink-coverage and stroke-solidity measurement on rendered text, plus chroma-retention measurement across 4:2:0 / 4:2:2 / 4:4:4 encodes</p>
 
 <p>Everything in the previous article about 4K being a bit-budget trap has an exception, and
 this is it. A screen recording is not a photograph. It is a rendering of vector content at a
@@ -245,6 +245,145 @@ that retains everything is a lossless codec, which is why capture at the final r
 remains the highest-value move on this page. Subsampling control is what you reach for when you
 cannot re-record.</p>
 
+<h2>The metric in the first table is lying too, and this one is my fault</h2>
+
+<p>The ink table near the top of this page counts pixels darker than mid-grey. I built that
+metric, used it to justify the 12% loss figure, and it has the same defect as the luma check in
+the chroma section: it counts a grey smear as ink. A stroke that has been averaged down to
+value 120 is "ink" by that rule and looks like a preserved stroke in a thumbnail. It is not a
+stroke; it is a two-pixel-wide gradient.</p>
+
+<p>So measure the thing the metric skips — of the pixels you are calling ink, how many are
+actually near-black? Call it <em>stroke solidity</em>: pixels below 64 as a share of pixels
+below 160. An antialiased smear still registers as coverage but scores near zero on solidity.
+Same plate, same strings, rendered natively at each resolution and also upscaled from the 720p
+native capture:</p>
+
+<table>
+<thead><tr><th>Output</th><th class="num">Native solidity</th><th class="num">From 720p</th>
+<th class="num">% of native</th><th class="num">Ink change</th></tr></thead>
+<tbody>
+<tr><td>1280×720 (1.0×)</td><td class="num">73.9%</td><td class="num">73.9%</td>
+<td class="num">100.0%</td><td class="num">0.00%</td></tr>
+<tr><td>1920×1080 (1.5×)</td><td class="num">82.6%</td><td class="num">46.8%</td>
+<td class="num">56.6%</td><td class="num">−0.35%</td></tr>
+<tr><td>2560×1440 (2.0×)</td><td class="num">84.0%</td><td class="num">65.1%</td>
+<td class="num">77.5%</td><td class="num">+3.18%</td></tr>
+<tr><td>3840×2160 (3.0×)</td><td class="num">86.8%</td><td class="num">52.3%</td>
+<td class="num">60.2%</td><td class="num">+3.44%</td></tr>
+</tbody>
+</table>
+
+<p>Read the two right-hand columns against each other, because that contrast is the entire
+point. Going 720p → 4K changes ink coverage by <strong>+3.44%</strong>, which the table further
+up this page would report as a win — slightly more ink than the native 4K render. Real stroke
+solidity over the same step falls from 73.9% to 52.3%, <strong>60% of what a native 4K render
+gives you</strong>. The upscale adds grey pixels around the glyphs and the coverage metric
+counts every one of them as recovered detail.</p>
+
+<div class="callout">
+<p><strong>The stronger version of the claim:</strong> solidity does not depend on the
+upscaling factor much at all. It is set at capture, and every factor lands near where the
+capture already was. Upscaling redistributes the grey, it does not create dark pixels.</p>
+</div>
+
+<p>Test that directly — take a capture at each resolution, show all of them at 4K, and measure
+solidity. If the factor were the lever, the small captures upscaled further would behave
+differently from the large ones upscaled barely. They do not; they line up with their own
+capture:</p>
+
+<table>
+<thead><tr><th>Capture</th><th class="num">Upscale to 4K</th><th class="num">Solidity</th>
+<th class="num">% of native 4K</th><th class="num">Ink coverage</th></tr></thead>
+<tbody>
+<tr><td>1280×720</td><td class="num">3.0×</td><td class="num">30.6%</td>
+<td class="num">40.3%</td><td class="num">0.031%</td></tr>
+<tr><td>1920×1080</td><td class="num">2.0×</td><td class="num">47.0%</td>
+<td class="num">61.9%</td><td class="num">0.031%</td></tr>
+<tr><td>2560×1440</td><td class="num">1.5×</td><td class="num">65.5%</td>
+<td class="num">86.3%</td><td class="num">0.032%</td></tr>
+<tr><td>3840×2160</td><td class="num">1.0×</td><td class="num">75.8%</td>
+<td class="num">100.0%</td><td class="num">0.027%</td></tr>
+</tbody>
+</table>
+
+<p>Ink coverage is flat to two decimal places across a 3× difference in capture resolution —
+0.031, 0.031, 0.032, 0.027. Solidity moves by a factor of 2.5 over the same rows. If you are
+grading captures with the coverage metric, you cannot tell a 720p source from a 4K source, and
+that is not a subtle failure of the metric, it is the metric being blind to the variable that
+matters.</p>
+
+<p>It holds across fonts and sizes, which is what makes it a mechanism rather than a quirk of
+DejaVu at one point size. Ratio of upscaled to native 4K solidity:</p>
+
+<table>
+<thead><tr><th>Glyph size</th><th class="num">Sans</th><th class="num">Serif</th>
+<th class="num">Mono</th></tr></thead>
+<tbody>
+<tr><td>28 px</td><td class="num">70.3%</td><td class="num">65.0%</td>
+<td class="num">70.2%</td></tr>
+<tr><td>20 px</td><td class="num">54.3%</td><td class="num">57.2%</td>
+<td class="num">49.4%</td></tr>
+<tr><td>14 px</td><td class="num">40.3%</td><td class="num">46.7%</td>
+<td class="num">35.5%</td></tr>
+<tr><td>11 px</td><td class="num">30.2%</td><td class="num">40.9%</td>
+<td class="num">29.2%</td></tr>
+</tbody>
+</table>
+
+<p>Three typefaces, four sizes, twelve measurements, and the upscaled arm never reaches 71% of
+the native render. Large text survives best because a 28 px glyph has strokes several pixels
+wide — there is enough room for a dark core to survive resampling. At 11 px the upscale keeps
+29–41% depending on the face, and the serif holds up better than the sans at small sizes because
+its strokes are already thinner and lose less relative weight. That gradient is exactly the
+"check the smallest text" advice from earlier in this page, now with a number attached.</p>
+
+<h3>The one result I did not expect: target width is a lottery</h3>
+
+<p>While sweeping factors I hit a target that scored 72.3% recall where its immediate
+neighbours scored 94–96%, a 23-point cliff. I assumed a bug. It was not: sweeping the output
+width one pixel at a time at a fixed ~1.67× factor, the cliff appears at 2128, then 2133–2134,
+then 2138–2139, then 2144, and nowhere in between. Changing the capture from 720p to 1080p and
+targeting 3200 px wide makes it vanish entirely (97.7–98.4% across the whole sweep).</p>
+
+<p>So it is a resonance between the source grid and the output pixel grid, not a property of
+the factor. The practical consequence is narrow but real: if your upscale tool lets you choose
+output dimensions and a result looks mushy at a size that should be fine, nudging the target
+width by one or two pixels is a free fix and the factor is irrelevant. Do not build a rule
+around it — six of twenty-one widths were affected, it is not predictable from the factor, and
+it does not survive a change of capture resolution.</p>
+
+<h3>Sharpening does raise solidity, and you should still not do it</h3>
+
+<p>Being fair to the obvious counter-argument: an unsharp mask does move this number, because
+sharpening is literally a dark-pixel amplifier. On the 720p → 4K upscale, solidity goes from
+52.3% to 76.9% at radius 2 / 100%, and 83.2% at radius 2 / 200% — nearly the native 86.8%.
+That looks like a fix and mostly is not: ink coverage over the same operation rises from 0.437%
+to 0.460% at 200%, and 0.571% at radius 4 / 150%, which is the stroke-thickening and halo
+signature measured on line art earlier in this cluster. You are not recovering the dark core
+that resampling averaged away; you are manufacturing a darker ring around a smeared core and
+counting it as a stroke. The dark core was destroyed at capture and no post-process knows where
+it was. Capture resolution is the only lever that adds information rather than contrast.</p>
+
+<h2>Reproducing the solidity measurement</h2>
+
+<pre><code>def solidity(img):
+    a = np.asarray(img.convert("L"), float)
+    ink  = (a &lt; 160).sum()          # everything you would call a stroke
+    dark = (a &lt;  64).sum()          # actual near-black core
+    return dark / ink * 100
+
+# native render at the target, vs the same layout captured small and upscaled
+s_native = solidity(render_native(3840, 2160))
+s_up     = solidity(render_native(1280, 720).resize((3840, 2160), Image.LANCZOS))
+print(s_native, s_up, s_up / s_native * 100)   # 86.8  52.3  60.2
+</code></pre>
+
+<p>Thresholds matter and the ratio is the number to report, never the absolute. Below 64 is a
+choice: a stroke rendered on a white background at 9 px, downscaled, still keeps a few pixels
+below 64 by luck of phase. Reporting solidity alone lets you compare two files; reporting it as
+a percentage of the native render is what makes it interpretable.</p>
+
 <h2>Reproducing the chroma measurement</h2>
 
 <pre><code>ffmpeg -y -i gt.png -c:v libx264 -preset slow -pix_fmt yuv444p -crf 18 out.mp4
@@ -281,6 +420,11 @@ photo and short video, which makes a one-frame test take seconds instead of a re
 
 <p>One frame tells you the answer. That is the useful part about text: it fails visibly and
 early, not gradually.</p>
+
+<p>If you want the number rather than the impression, use solidity and not coverage — the whole
+argument of this page is that coverage will congratulate you on an export that has already lost
+most of its stroke darkness. And if the frame was captured at the wrong resolution, no choice of
+resampling kernel, factor or sharpening amount puts the darkness back; only re-capturing does.</p>
 
 </article>
 <footer>
