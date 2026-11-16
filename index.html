@@ -36,6 +36,15 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 pre{background:#f7f8fa;border:1px solid var(--line);border-radius:8px;padding:1rem;overflow-x:auto;font-size:.86rem}
 footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--line);font-size:.9rem;color:var(--mut)}
 </style>
+<style>
+.sisternav{margin:2rem 0 0;padding-top:1.2rem;border-top:1px solid #e2e5ea}
+.sisternav p{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;
+ color:#5b6270;margin:0 0 .6rem}
+.sisternav ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem}
+.sisternav li{margin:0;font-size:.88rem;line-height:1.4}
+.sisternav a{text-decoration:none;border-bottom:1px solid #d5dae2}
+.sisternav a:hover{border-bottom-color:#0a58ca}
+</style>
 </head>
 <body>
 <main>
@@ -107,7 +116,7 @@ and means the "go to 4K" instinct happens to be right for once.</p>
 Flat panels upscale perfectly under any method (a constant stays constant). The dividers and
 icons behave like line art — they lose weight. The text loses ink. So the visible degradation
 is concentrated in a small fraction of the pixels, which is why it is easy to miss in a
-thumbnail and obvious full-screen.</p>
+<a href="https://celticgemini001.github.io/upgolab-thumbnail-4k-master/">thumbnail</a> and obvious full-screen.</p>
 
 <ol>
   <li><strong>Record at native resolution of the target</strong> if at all possible. This
@@ -194,7 +203,7 @@ single case, dark green at 11 px, 4:2:0 kept 48.6% of the original chroma while 
 <p><strong>It is not rate control.</strong> Stepping 4:2:0 from crf18 to crf28 halved the file
 (44,022 → 22,243 bytes) and dropped 11 px chroma from 54.1% to 38.7%. So bitrate matters — but
 even the generous crf18 encode, at 8.80 Mbit/s, cannot climb above the ceiling that the
-subsampling sets. The ceiling is structural, not budgetary.</p>
+<a href="https://celticgemini001.github.io/upgolab-chroma-subsampling/">subsampling</a> sets. The ceiling is structural, not budgetary.</p>
 
 <p><strong>It is not bleeding, mostly.</strong> Mean chroma appearing in the background pixels
 inside the text bounding box — pixels where ground truth has none — rose from 5.10 under 4:4:4
@@ -430,16 +439,6 @@ resampling kernel, factor or sharpening amount puts the darkness back; only re-c
 <footer>
 Published by <a href="https://upgolab.com">UpgoLAB</a> — AI photo and short-video upscaling
 in the browser. Ink coverage measured at mid-grey threshold on rendered 54px text.
-
-<style>
-.sisternav{margin:2rem 0 0;padding-top:1.2rem;border-top:1px solid #e2e5ea}
-.sisternav p{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;
- color:#5b6270;margin:0 0 .6rem}
-.sisternav ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:.4rem .9rem}
-.sisternav li{margin:0;font-size:.88rem;line-height:1.4}
-.sisternav a{text-decoration:none;border-bottom:1px solid #d5dae2}
-.sisternav a:hover{border-bottom-color:#0a58ca}
-</style>
 
 <nav class="sisternav" aria-label="More measured upscaling guides">
 <p>More measured guides</p>
