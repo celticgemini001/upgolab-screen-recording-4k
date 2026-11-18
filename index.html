@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Turning a 1080p Screen Recording Into a Usable 4K Asset</title>
-<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: ink coverage and stroke solidity diverge — a 720p→4K upscale reads as +3.4% ink while keeping 60% of native stroke darkness, and 4:2:0 destroys 46% of colour in small text invisibly to luma metrics.">
+<meta name="description" content="Screen recordings are the one case where 4K genuinely wins, because UI text is pure high-frequency content. Measured: ink coverage and stroke solidity diverge — a 720p→4K upscale reads as +3.4% ink while keeping 60% of native stroke darkness, 4:2:0 destroys 46% of colour in small text invisibly to luma metrics, and solidity swings 11 points at 11px purely from sub-pixel phase.">
 <link rel="canonical" href="https://celticgemini001.github.io/upgolab-screen-recording-4k/">
 <meta property="og:type" content="article">
 <meta property="og:title" content="Turning a 1080p Screen Recording Into a Usable 4K Asset">
@@ -14,6 +14,7 @@
  "author":{"@type":"Organization","name":"UpgoLAB","url":"https://upgolab.com"},
  "publisher":{"@type":"Organization","name":"UpgoLAB","url":"https://upgolab.com"},
  "datePublished":"2026-11-14",
+ "dateModified":"2026-11-18",
  "mainEntityOfPage":"https://celticgemini001.github.io/upgolab-screen-recording-4k/"}
 </script>
 <style>
@@ -55,7 +56,7 @@ because UI text is the highest-frequency content video can carry. But text also 
 differently — 4× upscaling drops ink coverage 12%, a default 4:2:0 export silently destroys
 up to 46% of the colour in small text, and the coverage metric most people grade with reports
 a 720p→4K upscale as <em>better</em> than native while keeping only 60% of the stroke darkness.</p>
-<p class="meta">15 November 2026 · ink-coverage and stroke-solidity measurement on rendered text, plus chroma-retention measurement across 4:2:0 / 4:2:2 / 4:4:4 encodes</p>
+<p class="meta">15 November 2026, extended 18 November 2026 · ink-coverage and stroke-solidity measurement on rendered text, plus chroma-retention measurement across 4:2:0 / 4:2:2 / 4:4:4 encodes</p>
 
 <p>Everything in the previous article about 4K being a bit-budget trap has an exception, and
 this is it. A screen recording is not a photograph. It is a rendering of vector content at a
@@ -393,6 +394,270 @@ choice: a stroke rendered on a white background at 9 px, downscaled, still keeps
 below 64 by luck of phase. Reporting solidity alone lets you compare two files; reporting it as
 a percentage of the native render is what makes it interpretable.</p>
 
+<h2>Solidity is a range, not a number — and at 11px the range is 11 points wide</h2>
+
+<p>Every table above quotes solidity as a single figure per processing route. That is a mistake,
+and I only found it because a value I had recorded drifted when I re-ran the same script on the
+same fixture. The drift was not noise. Solidity depends on <em>where inside the pixel</em> the
+glyph lands, and a screenshot taken at an arbitrary moment samples exactly one of those
+positions.</p>
+
+<p>Text on screen is not placed on integer coordinates. A compositor, a scroll position, a
+sub-pixel layout engine — any of them can put a glyph edge at x = 42.375 rather than x = 42. The
+rasteriser then spreads that edge across two pixels, and how it spreads it changes with the
+fraction. Thirty years of font hinting exists to hide this at small sizes. Measuring solidity
+walks straight into it.</p>
+
+<p>So sweep the phase explicitly. Render once at 8× and crop the window with an integer offset,
+then area-downsample: the offset is the phase, exact to 1/8 of a pixel, and no re-render noise can
+enter. Same 8× raster for both arms, so neither side gets a resampling advantage.</p>
+
+<table>
+<thead><tr>
+<th>Text size</th><th>Upscale ×3 solidity</th><th>Spread, 16 phases</th>
+<th>Native ×3 solidity</th><th>Native spread</th><th>% of native</th>
+<th>Ink coverage spread</th>
+</tr></thead>
+<tbody>
+<tr><td>11 px</td><td class="num">25.1</td><td class="num">19.1 – 30.2 &nbsp;(11.2)</td>
+<td class="num">74.6</td><td class="num">4.8</td><td class="num">33.6%</td>
+<td class="num">3.5%</td></tr>
+<tr><td>13 px</td><td class="num">39.8</td><td class="num">37.3 – 41.6 &nbsp;(4.3)</td>
+<td class="num">78.5</td><td class="num">2.5</td><td class="num">50.7%</td>
+<td class="num">2.7%</td></tr>
+<tr><td>20 px</td><td class="num">58.6</td><td class="num">57.9 – 59.2 &nbsp;(1.3)</td>
+<td class="num">86.0</td><td class="num">1.6</td><td class="num">68.1%</td>
+<td class="num">1.5%</td></tr>
+</tbody>
+</table>
+
+<p>At 11 px the same upscale, on the same text, scores <strong>19.1 or 30.2</strong> depending on
+nothing but sub-pixel placement — a 58% difference between the worst and the best moment, from a
+variable the pipeline never sees. The last column is the reason this stayed invisible: ink
+coverage over the same 16 phases moves 3.5%, so the metric every sharpness table uses reports
+those frames as effectively identical. If you had graded this recording by counting ink pixels,
+you would have concluded the lettering was stable.</p>
+
+<p>Look at the native column, because it changes who is at fault. A native ×3 render still swings
+4.8 points at 11 px, so phase dependence is not something the upscaler invents — a perfect render
+at the final resolution is unstable too. But the upscale arm is the <em>worse</em> of the two at
+small sizes: 11.2 points of swing against a native 4.8 at 11 px, and 4.3 against 2.5 at 13 px.
+Only at 20 px, where the strokes are wide enough to hold a solid core, does the upscale edge ahead
+(1.3 against 1.6). As a fraction of its own peak the gap is wider still: 36.9% for the upscale at
+11 px against 6.2% for the native render. Resampling does not preserve the phase dependence — at
+small sizes it roughly doubles it, because averaging a blend across a blend adds a second layer of
+coverage ambiguity on top of the one already in the capture. The ×2 route behaves the same way:
+native swings 8.1 and the upscale 13.6, so a 2× resample of 11 px text is the least stable
+configuration in this section.</p>
+
+<h3>Why 11 px and not 20 px: stroke width in capture pixels</h3>
+
+<p>The size dependence is not a font quirk, it is arithmetic. Measure the run lengths of ink in
+the capture and count how many strokes are narrower than two pixels — that is, how many strokes
+have no pixel wholly inside them.</p>
+
+<table>
+<thead><tr><th>Text size</th><th>Mean stroke width</th><th>Runs under 2 px</th>
+<th>Ink pixels inside a solid 2×2 block</th></tr></thead>
+<tbody>
+<tr><td>11 px</td><td class="num">1.96 px</td><td class="num">62.4%</td><td class="num">7.0%</td></tr>
+<tr><td>13 px</td><td class="num">2.40 px</td><td class="num">43.1%</td><td class="num">20.2%</td></tr>
+<tr><td>20 px</td><td class="num">3.38 px</td><td class="num">4.3%</td><td class="num">42.1%</td></tr>
+</tbody>
+</table>
+
+<p>At 11 px, 93% of the ink has no fully-covered pixel at all. Every pixel representing the stroke
+is a blend of ink and background, so its darkness is a function of the coverage fraction — which
+is precisely the phase. At 20 px, 42% of the ink sits in pixels that are solidly inside the glyph,
+and those pixels score near-black regardless of where the glyph falls. The phase swing is the
+curvature of that blend, and a stroke two pixels wide has almost no blend left to curve.</p>
+
+<h3>What this does in motion: the scroll speed decides whether you see it</h3>
+
+<p>A still frame samples one phase. A scrolling page walks through them, and the rate of the walk
+sets the frequency. Text moving at exactly 1 capture pixel per frame lands on the same phase every
+frame, so the modulation disappears. Text moving at a third of a pixel per frame visits every phase
+over three frames, which at 60 Hz is a 20 Hz modulation of letter weight.</p>
+
+<table>
+<thead><tr><th>Scroll speed</th><th>capture 1× swing</th><th>×2 swing</th><th>×3 swing</th>
+<th>Largest 1-frame step, capture 1×</th></tr></thead>
+<tbody>
+<tr><td>0.125 px/frame</td><td class="num">25.8</td><td class="num">14.5</td><td class="num">11.9</td><td class="num">10.4</td></tr>
+<tr><td>0.25 px/frame</td><td class="num">16.1</td><td class="num">11.9</td><td class="num">9.4</td><td class="num">14.4</td></tr>
+<tr><td>0.333 px/frame</td><td class="num">20.2</td><td class="num">14.5</td><td class="num">12.1</td><td class="num">19.6</td></tr>
+<tr><td>0.5 px/frame</td><td class="num">16.1</td><td class="num">11.9</td><td class="num">9.0</td><td class="num">16.1</td></tr>
+<tr><td>0.75 px/frame</td><td class="num">16.1</td><td class="num">11.9</td><td class="num">9.3</td><td class="num">15.4</td></tr>
+<tr><td><strong>1.0 px/frame</strong></td><td class="num">2.5</td><td class="num">1.3</td><td class="num">1.0</td><td class="num">1.2</td></tr>
+</tbody>
+</table>
+
+<p>The integer row is the tell. At exactly one pixel per frame the swing collapses to 1.0–2.5, a
+tenth of the worst fractional row, because the sampling is stationary in phase. Nothing about the
+upscaler changed between rows — the same kernel, the same factor, the same text. Only the speed
+changed. That has a direct consequence for test methodology: if you evaluate an upscale on frames
+pulled from a recording that scrolled at a whole-pixel rate, or on static screenshots, you are
+evaluating the one condition that hides this.</p>
+
+<p>The largest-step column is worse than the range suggests, and it is the one a viewer actually
+notices. A panel scrolling at 1/3 capture px per frame can jump 19.6 solidity points between one
+frame and the next — flicker at the frame rate, not a slow drift. It is the ×3 upscale that flickers
+least at fractional speeds (5.5 to 12.0 per frame, against 10.4 to 19.6 for the raw capture), but
+it does so around a mean of 25, not of 39.</p>
+
+<h3>The kernel cannot fix it, and the kernel that appears to fix it is the one that destroys the ink</h3>
+
+<p>Eleven-pixel text, ×3, four resampling filters over the same 16 phases:</p>
+
+<table>
+<thead><tr><th>Kernel</th><th>Solidity mean</th><th>Range</th><th>Swing</th><th>Swing as % of max</th></tr></thead>
+<tbody>
+<tr><td>nearest</td><td class="num">39.1</td><td class="num">28.2 – 52.5</td><td class="num">24.4</td><td class="num">46.4%</td></tr>
+<tr><td>bilinear</td><td class="num">12.1</td><td class="num">9.0 – 15.5</td><td class="num">6.5</td><td class="num">41.9%</td></tr>
+<tr><td>bicubic</td><td class="num">19.3</td><td class="num">14.4 – 24.2</td><td class="num">9.8</td><td class="num">40.5%</td></tr>
+<tr><td>lanczos</td><td class="num">25.1</td><td class="num">19.1 – 30.2</td><td class="num">11.2</td><td class="num">36.9%</td></tr>
+<tr><td><em>capture only, no upscale</em></td><td class="num">39.1</td><td class="num">28.2 – 52.5</td><td class="num">24.4</td><td class="num">46.4%</td></tr>
+</tbody>
+</table>
+
+<p>Two things in that table are worth more than the ranking. First, <strong>nearest is
+bit-identical to the capture</strong> — mean 39.1, range 28.2–52.5, exact match on all three.
+That is the control: nearest adds no information, so if the capture already swings, the cheap
+kernel inherits the swing and adds nothing. The phase dependence is in the source pixels.</p>
+
+<p>Second, bilinear has the smallest absolute swing (6.5) and is the worst option by a wide
+margin: its mean solidity is 12.1 against 25.1 for Lanczos. It "stabilises" the number by
+averaging the darkness out of existence — there is nothing left to fluctuate because the ink is
+almost gone. A swing figure without the mean next to it would rank bilinear first. That is the
+same failure mode as the coverage metric earlier on this page, one level up: a statistic that
+improves as the image gets worse.</p>
+
+<p>The relative column is the honest comparison, and it barely moves: 36.9% to 46.4% across all
+four kernels. Whatever the filter does to the absolute number, between two-fifths and half of the
+peak solidity is phase-dependent at 11 px, and no choice of kernel addresses that. Which is
+consistent with the mechanism — the information about where the stroke sat inside the pixel was
+thrown away at capture.</p>
+
+<h3>The codec preserves it, which is not the direction I expected</h3>
+
+<p>I assumed H.264 would smooth the modulation out, since it is a low-pass operation on top of a
+low-pass operation. It does not. Twenty-four frames sweeping half a capture pixel per frame, ×3
+upscale with Lanczos, yuv420p at crf18, decoded and upscaled again:</p>
+
+<table>
+<thead><tr><th>Stage</th><th>Solidity range</th><th>Swing</th></tr></thead>
+<tbody>
+<tr><td>Lanczos ×3, no encode</td><td class="num">21.2 – 30.2</td><td class="num">9.0</td></tr>
+<tr><td>x264 crf18 → decode → Lanczos ×3</td><td class="num">21.2 – 32.0</td><td class="num">10.8</td></tr>
+</tbody>
+</table>
+
+<p>Correlation between the two curves is <strong>0.998</strong> — the encode shifts solidity up by
+a mean of 1.2 points and preserves the modulation essentially perfectly, in fact widening it a
+little. The frame-by-frame values alternate 30.2 / 21.4 / 29.7 / 21.3 and after the encode
+32.0 / 22.2 / 31.4 / 21.8: same beat, higher floor. So the artifact survives delivery intact, and a
+bitrate increase will not touch it, because it is not a bitrate phenomenon. (The +1.2 floor rise
+is the codec's own edge darkening — the same direction as the sharpening caveat above, a number
+that goes up for the wrong reason.)</p>
+
+<h3>So how do you quote a solidity number</h3>
+
+<p>Not from one frame. Three different strings at 11 px, ×3, each measured at phase 0 (what a
+screenshot gives you) and as the mean over 16 phases:</p>
+
+<table>
+<thead><tr><th>String</th><th>Mean of 16 phases</th><th>SD</th><th>Phase 0</th><th>Error of phase 0</th></tr></thead>
+<tbody>
+<tr><td>Paid 128.40 Error: file not found</td><td class="num">25.05</td><td class="num">3.74</td><td class="num">30.2</td><td class="num">+5.2</td></tr>
+<tr><td>Settings Export Cancel Apply</td><td class="num">24.42</td><td class="num">1.14</td><td class="num">23.9</td><td class="num">−0.5</td></tr>
+<tr><td>Invoice #4471 Overdue 12 days</td><td class="num">24.60</td><td class="num">4.00</td><td class="num">26.1</td><td class="num">+1.5</td></tr>
+</tbody>
+</table>
+
+<p>The means agree to <strong>0.63 points</strong> across three unrelated strings. The
+single-phase values scatter over <strong>6.3 points</strong> for the same three strings — a spread
+ten times wider, generated entirely by where the glyphs happened to land. The worst single-frame
+error against its own 16-phase mean is 5.2 points, on a metric whose useful range in this article
+is about 25 to 87.</p>
+
+<p>That is the correction I have to make to my own earlier numbers. The 60.2% and 52.3% figures
+further up this page were single renders; they are representative of the mean, but any one of them
+could have been six points different without anything about the pipeline changing. If you are
+comparing two configurations whose difference is under about ten points at small sizes, a
+single-frame comparison cannot distinguish them from phase luck. Measure the phase, or measure
+several frames and report the mean and the spread.</p>
+
+<h3>What this changes about testing a recording</h3>
+
+<p><strong>Never grade small text from one screenshot.</strong> At 11 px the same file scores 19.1
+or 30.2 depending on sub-pixel placement. Two screenshots of two configurations differ by phase
+before they differ by quality.</p>
+
+<p><strong>Pull test frames from a fractional scroll, not a whole-pixel one.</strong> At exactly
+1 capture px per frame the swing collapses by a factor of ten. A harness that scrolls by integer
+amounts, or that compares static frames, is structurally blind to the most visible defect in
+small UI text.</p>
+
+<p><strong>Report the mean and the spread together.</strong> A swing figure alone ranks bilinear
+first, because bilinear has almost nothing left to fluctuate. The mean alone hides that the frame
+you are looking at might be the bottom of an 11-point range.</p>
+
+<p><strong>Do not chase this with a kernel or a bitrate.</strong> All four filters land between
+36.9% and 46.4% relative swing; the codec preserves the modulation at r = 0.998 and raises the
+floor by 1.2 points. The one thing that changes the relative swing is a bigger capture. On the
+same 11 px text at the same ×2 output size, a genuine 2× capture swings 8.1 points where the 1×
+capture upscaled to 2× swings 13.6, and its mean solidity is 63.1 against 28.7 — 2.2× the
+darkness, 60% of the wobble.</p>
+
+<p>Which lands where every other measurement on this page lands: the destructive step happened
+before the upscaler ran. Sub-pixel phase is the smallest and most reproducible example of it —
+small enough to look like measurement noise, and stable enough, once you sweep it, to be a
+mechanism rather than an error bar.</p>
+
+<h2>Reproducing the phase sweep</h2>
+
+<pre><code># one 8x raster per arm, cropped at an integer offset = an exact sub-pixel phase
+def blk(w, h, font, layout=1.0):          # w, h, font in OUTPUT px, +24 px headroom
+    img = Image.new("L", (int((w + 24 * layout) * 8), h * 8), 255)
+    ImageDraw.Draw(img).text((30 * layout * 8, 20 * layout * 8), TEXT,
+                             font=ImageFont.truetype(FONT, int(round(font * 8))), fill=0)
+    return np.asarray(img)
+
+def win(a, off, w, h):                    # off in supersample px = 8 * phase
+    box = a[0:h*8, off:off+w*8]
+    return np.asarray(Image.fromarray(np.ascontiguousarray(box)).resize((w, h), Image.BOX))
+
+def solidity(c):
+    return (c &lt; 64).sum() / max(1, (c &lt; 160).sum()) * 100
+
+def roi(a):                                # ink bbox; each arm gets its own
+    ys, xs = np.where(a &lt; 250)
+    return ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+
+W, H, F = 720, 60, 3
+cap_src, nat_src = blk(W, H, 11), blk(W*F, H*F, 11*F, layout=F)
+croi = roi(win(cap_src, 0, W, H))
+
+for k in range(16):                        # 16 phases across one capture pixel
+    cap = win(cap_src, k * 8 // 16, W, H)
+    up  = np.asarray(Image.fromarray(cap).resize((W*F, H*F), Image.LANCZOS), float)
+    nat = np.asarray(win(nat_src, k * F * 8 // 16, W*F, H*F), float)
+    nroi = roi(nat)
+    su = solidity(up[croi[0]*F:croi[1]*F, croi[2]*F:croi[3]*F])
+    sn = solidity(nat[nroi[0]:nroi[1], nroi[2]:nroi[3]])
+    print(k, round(su, 1), round(sn, 1))
+# upscale arm 19.1 .. 30.2, native arm 72.6 .. 76.7
+</code></pre>
+
+<p>Two details make it reproducible. The crop offset must be an integer in supersample units and
+the downsample must be area-average (<code>Image.BOX</code>) — resampling the window with Lanczos
+would put a second filter in the way of the phase you are trying to isolate. And the native arm
+must be rendered on the output grid, not the capture grid: comparing a 2× upscale against a 3×
+native render, as my first attempt did, made the upscale arm score 106% of "native", which is an
+artifact of comparing two output sizes rather than a finding. Both arms need their own padding,
+too; a shared canvas clips the last glyph in the upscaled window and biases every phase by a
+different amount.</p>
+
 <h2>Reproducing the chroma measurement</h2>
 
 <pre><code>ffmpeg -y -i gt.png -c:v libx264 -preset slow -pix_fmt yuv444p -crf 18 out.mp4
@@ -424,8 +689,8 @@ ink = (np.asarray(back.convert("L"), float) &lt; 128).mean() * 100
 <p>Extract a single frame with the smallest text in it, upscale that, and look at 100%. If the
 thin strokes hold, the recording will hold. If they go soft, no amount of bitrate saves
 them — the pixels are gone.
-<a href="https://upgolab.com/en/upscale">UpgoLAB runs the upscale in the browser</a> for
-photo and short video, which makes a one-frame test take seconds instead of a render queue.</p>
+<a href="https://celticgemini001.github.io/upgolab-tools/">Running the same measurement on your own frame</a>
+takes seconds instead of a render queue, which is what makes a multi-frame test practical at all.</p>
 
 <p>One frame tells you the answer. That is the useful part about text: it fails visibly and
 early, not gradually.</p>
